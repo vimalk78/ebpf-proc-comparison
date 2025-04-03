@@ -68,7 +68,10 @@ func run(ctx context.Context, doneCh chan struct{}) {
 			// read /proc/<pid>/stat for each active proc
 			for _, pid := range activeProcPids {
 				// deliberately ignoring the returned values
-				proc.ReadPidProcStat(pid)
+				_, _, _, err := proc.ReadPidProcStat(pid)
+				if err != nil {
+					log.Error("cannot read /proc/<pid>/stat", "pid", pid)
+				}
 			}
 			log.Info("ActiveProcs", "num", len(activeProcPids), "cost", time.Since(newTs).String())
 
