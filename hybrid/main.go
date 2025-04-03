@@ -61,19 +61,19 @@ func run(ctx context.Context, doneCh chan struct{}) {
 				continue
 			}
 			// get active procs
-			activeProcPids, err := bpfInstance.GetActiveProcPids()
+			activeProcs, err := bpfInstance.GetActiveProcs()
 			if err != nil {
 				log.Error("Error reading active procs", "error", err)
 			}
 			// read /proc/<pid>/stat for each active proc
-			for _, pid := range activeProcPids {
+			for _, activeProc := range activeProcs {
 				// deliberately ignoring the returned values
-				_, _, _, err := proc.ReadPidProcStat(pid)
+				_, _, _, err := proc.ReadPidProcStat(activeProc.Pid)
 				if err != nil {
-					log.Error("cannot read /proc/<pid>/stat", "pid", pid)
+					log.Error("cannot read /proc/<pid>/stat", "proc", activeProc)
 				}
 			}
-			log.Info("ActiveProcs", "num", len(activeProcPids), "cost", time.Since(newTs).String())
+			log.Info("ActiveProcs", "num", len(activeProcs), "cost", time.Since(newTs).String())
 
 		case <-ctx.Done():
 			log.Info("loop finished...")

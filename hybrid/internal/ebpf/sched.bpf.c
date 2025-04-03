@@ -15,6 +15,7 @@ struct task_struct {
 struct active_proc {
     __u32 pid; // pid in userspace, but tgid in kernel space
     __u32 cpu;
+    char comm[16];
 };
 
 /* BPF map of active PIDs with minimal info */
@@ -37,6 +38,7 @@ static inline void do_update(__u32 pid, __u32 tgid)
     // Get CPU ID and timestamp
     info.pid = tgid;
     info.cpu = bpf_get_smp_processor_id();
+    bpf_get_current_comm(&info.comm, sizeof(info.comm));
     
     // Update active PIDs map
     bpf_map_update_elem(&active_procs, &tgid, &info, BPF_NOEXIST);

@@ -1,15 +1,20 @@
 package ebpf
 
+import "C"
 import (
 	"errors"
 	"fmt"
 	"sync"
+	"unsafe"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 )
 
-type ActiveProcPids = []uint32
+type ActiveProcs []struct {
+	Pid  uint32
+	Comm string
+}
 
 type bpfManager struct {
 	bpfObjs    keplerObjects
@@ -56,7 +61,7 @@ func MustInstance() *bpfManager {
 	return mgr
 }
 
-func (bm *bpfManager) GetActiveProcPids() (ActiveProcPids, error) {
+func (bm *bpfManager) GetActiveProcs() (ActiveProcs, error) {
 	activeProcsMap := bm.bpfObjs.ActiveProcs
 	maxEntries := activeProcsMap.MaxEntries()
 	total := 0
@@ -78,7 +83,12 @@ func (bm *bpfManager) GetActiveProcPids() (ActiveProcPids, error) {
 			return nil, err
 		}
 	}
-	return keys[:total], nil
+	procs := make(ActiveProcs, total)
+	for i, proc := range values[:total] {
+		procs[i].Pid = proc.Pid
+		procs[i].Comm = C.GoString((*C.char)(unsafe.Pointer(&proc.Comm)))
+	}
+	return procs, nil
 }
 
 func (bm *bpfManager) Close() {

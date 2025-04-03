@@ -13,8 +13,9 @@ import (
 )
 
 type keplerActiveProc struct {
-	Pid uint32
-	Cpu uint32
+	Pid  uint32
+	Cpu  uint32
+	Comm [16]int8
 }
 
 // loadKepler returns the embedded CollectionSpec for kepler.
