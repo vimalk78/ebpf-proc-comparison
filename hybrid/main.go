@@ -82,12 +82,13 @@ func run(ctx context.Context, doneCh chan struct{}) {
 					}
 					isolated.Track(activeProc.Cpu, activeProc)
 
-				}
-				procsRead += 1
-				// deliberately ignoring the returned values
-				_, _, _, err := proc.ReadPidProcStat(activeProc.Pid)
-				if err != nil {
-					log.Error("cannot read /proc/<pid>/stat", "proc", activeProc)
+				} else {
+					procsRead += 1
+					// deliberately ignoring the returned values
+					_, _, _, err := proc.ReadPidProcStat(activeProc.Pid)
+					if err != nil {
+						log.Error("cannot read /proc/<pid>/stat", "proc", activeProc)
+					}
 				}
 			}
 			// if an  isolated cpu didnt had a context switch, the same process continues
