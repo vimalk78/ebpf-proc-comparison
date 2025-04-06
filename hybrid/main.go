@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -62,6 +63,8 @@ func run(ctx context.Context, doneCh chan struct{}) {
 	for {
 		select {
 		case newTs := <-ticker:
+			// tracks context switches for isolated cpus
+			contextSwitch := map[int]bool{}
 			timeDiffSec := newTs.Sub(oldTs).Seconds()
 			if timeDiffSec < 0.1 {
 				continue
@@ -74,14 +77,29 @@ func run(ctx context.Context, doneCh chan struct{}) {
 			procsRead := 0
 			// read /proc/<pid>/stat for each active proc
 			for _, activeProc := range activeProcs {
-				if *onlyIsolated && !slices.Contains(isolatedCPUs, int(activeProc.Cpu)) {
-					continue
+				if *onlyIsolated {
+					if !slices.Contains(isolatedCPUs, int(activeProc.Cpu)) {
+						continue
+					}
+					if strings.HasPrefix(activeProc.Comm, "swapper/") {
+						// the isolated cpu had context switch
+						contextSwitch[int(activeProc.Cpu)] = true
+					}
 				}
 				procsRead += 1
 				// deliberately ignoring the returned values
 				_, _, _, err := proc.ReadPidProcStat(activeProc.Pid)
 				if err != nil {
 					log.Error("cannot read /proc/<pid>/stat", "proc", activeProc)
+				}
+			}
+			// if an  isolated cpu didnt had a context switch, the same process continues
+			if *onlyIsolated {
+				for _, isolatedCPU := range isolatedCPUs {
+					if _, switched := contextSwitch[isolatedCPU]; !switched {
+						log.Info("isolated cpu had no context switch", "cpu", isolatedCPU)
+						procsRead += 1
+					}
 				}
 			}
 			log.Info("ActiveProcs", "num", procsRead, "cost", time.Since(newTs).String())
