@@ -144,12 +144,21 @@ func getProcPidsFromDir(dir string) ([]uint32, error) {
 	return pids[:count], nil
 }
 
+func MustGetIsolatedCPUs() []int {
+	cpus, err := GetIsolatedCPUs()
+	if err != nil {
+		panic("cannot get isolated cpus " + err.Error())
+	}
+	return cpus
+}
+
 func GetIsolatedCPUs() ([]int, error) {
 	data, err := os.ReadFile("/sys/devices/system/cpu/isolated")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read isolated CPUs: %v", err)
 	}
-	return getIsolatedCPUsFromStr(string(data))
+	cpuStr := strings.TrimSpace(string(data))
+	return getIsolatedCPUsFromStr(cpuStr)
 }
 
 func getIsolatedCPUsFromStr(cpuStr string) ([]int, error) {
@@ -161,7 +170,9 @@ func getIsolatedCPUsFromStr(cpuStr string) ([]int, error) {
 	var cpus []int
 	for _, part := range parts {
 		cpuRange := strings.SplitN(part, "-", 2)
-		if len(cpuRange) == 2 {
+		if len(cpuRange) == 0 {
+			continue
+		} else if len(cpuRange) == 2 {
 			cpuBegin, err := strconv.Atoi(cpuRange[0])
 			if err != nil {
 				return nil, fmt.Errorf("invalid range %s", part)
@@ -184,8 +195,6 @@ func getIsolatedCPUsFromStr(cpuStr string) ([]int, error) {
 				return nil, fmt.Errorf("invalid cpu %s", part)
 			}
 			cpus = append(cpus, cpu)
-		} else {
-			return nil, fmt.Errorf("invalid cpus %s", part)
 		}
 	}
 	return cpus, nil

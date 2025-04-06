@@ -6,6 +6,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -17,10 +18,14 @@ import (
 )
 
 var (
-	bpfInstance  = ebpf.MustInstance()
+	bpfInstance = ebpf.MustInstance()
+
+	isolatedCPUs = proc.MustGetIsolatedCPUs()
+
 	app          = kingpin.New("ebpf-proc-hybrid", "an ebpf + /proc hybrid approach to get procsess cpu usage")
 	loopInterval = app.Flag("loop-interval", "loop interval").Default("1000ms").Duration()
 	enablePprof  = app.Flag("enable-pprof", "enable profiling with pprof").Default("false").Bool()
+	onlyIsolated = app.Flag("only-isolated", "check only isolated cpus").Default("false").Bool()
 )
 
 func main() {
@@ -50,6 +55,7 @@ func main() {
 
 func run(ctx context.Context, doneCh chan struct{}) {
 	log.Info("Starting loop", "interval", loopInterval)
+	log.Info("Isolated CPUs", "num", len(isolatedCPUs), "cpus", isolatedCPUs)
 	ticker := time.Tick(*loopInterval)
 	oldTs := time.Now()
 
@@ -65,15 +71,20 @@ func run(ctx context.Context, doneCh chan struct{}) {
 			if err != nil {
 				log.Error("Error reading active procs", "error", err)
 			}
+			procsRead := 0
 			// read /proc/<pid>/stat for each active proc
 			for _, activeProc := range activeProcs {
+				if *onlyIsolated && !slices.Contains(isolatedCPUs, int(activeProc.Cpu)) {
+					continue
+				}
+				procsRead += 1
 				// deliberately ignoring the returned values
 				_, _, _, err := proc.ReadPidProcStat(activeProc.Pid)
 				if err != nil {
 					log.Error("cannot read /proc/<pid>/stat", "proc", activeProc)
 				}
 			}
-			log.Info("ActiveProcs", "num", len(activeProcs), "cost", time.Since(newTs).String())
+			log.Info("ActiveProcs", "num", procsRead, "cost", time.Since(newTs).String())
 
 		case <-ctx.Done():
 			log.Info("loop finished...")

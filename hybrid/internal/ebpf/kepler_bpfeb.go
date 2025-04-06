@@ -14,7 +14,7 @@ import (
 
 type keplerActiveProc struct {
 	Pid  uint32
-	Cpu  uint32
+	Cpu  int32
 	Comm [16]int8
 }
 

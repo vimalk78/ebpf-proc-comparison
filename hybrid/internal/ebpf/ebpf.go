@@ -13,6 +13,7 @@ import (
 
 type ActiveProcs []struct {
 	Pid  uint32
+	Cpu  int32
 	Comm string
 }
 
@@ -86,6 +87,7 @@ func (bm *bpfManager) GetActiveProcs() (ActiveProcs, error) {
 	procs := make(ActiveProcs, total)
 	for i, proc := range values[:total] {
 		procs[i].Pid = proc.Pid
+		procs[i].Cpu = proc.Cpu
 		procs[i].Comm = C.GoString((*C.char)(unsafe.Pointer(&proc.Comm)))
 	}
 	return procs, nil

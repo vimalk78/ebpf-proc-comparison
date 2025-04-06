@@ -14,7 +14,7 @@ struct task_struct {
 /* Structure for active PID information */
 struct active_proc {
     __u32 pid; // pid in userspace, but tgid in kernel space
-    __u32 cpu;
+    int cpu;
     char comm[16];
 };
 

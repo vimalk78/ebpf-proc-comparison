@@ -59,7 +59,7 @@ func Test_readCpuProcStatFromStr(t *testing.T) {
 		{
 			name:   "overall cpu",
 			numCpu: 0,
-			kind:   UserSystem,
+			kind:   User | System,
 			data: `
                   cpu 100 0 300 0 0 0 0 0 0 0`,
 			want: []CpuTicks{400},
@@ -67,7 +67,7 @@ func Test_readCpuProcStatFromStr(t *testing.T) {
 		{
 			name:   "overall cpu and cpu 1",
 			numCpu: 1,
-			kind:   UserSystem,
+			kind:   User | System,
 			data: `
                   cpu  100 0 300 0 0 0 0 0 0 0
                   cpu0 110 0 310 0 0 0 0 0 0 0
@@ -77,7 +77,7 @@ func Test_readCpuProcStatFromStr(t *testing.T) {
 		{
 			name:   "overall cpu and cpu 1, User + Nice + System",
 			numCpu: 1,
-			kind:   UserNiceSystem,
+			kind:   User | Nice | System,
 			data: `
                   cpu  100 200 300 0 0 0 0 0 0 0
                   cpu0 110 210 310 0 0 0 0 0 0 0
@@ -87,7 +87,7 @@ func Test_readCpuProcStatFromStr(t *testing.T) {
 		{
 			name:    "overall cpu and cpu 1",
 			numCpu:  1,
-			kind:    UserSystem,
+			kind:    User | System,
 			data:    "",
 			wantErr: true,
 		},
