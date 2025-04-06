@@ -76,25 +76,33 @@ func run(ctx context.Context, doneCh chan struct{}) {
 			procsRead := 0
 			// read /proc/<pid>/stat for each active proc
 			for _, activeProc := range activeProcs {
-				if *onlyIsolated {
-					if !slices.Contains(isolatedCPUs, activeProc.Cpu) {
-						continue
-					}
+				if slices.Contains(isolatedCPUs, activeProc.Cpu) {
 					isolated.Track(activeProc.Cpu, activeProc)
-
 				} else {
-					procsRead += 1
-					// deliberately ignoring the returned values
-					_, _, _, err := proc.ReadPidProcStat(activeProc.Pid)
-					if err != nil {
-						log.Error("cannot read /proc/<pid>/stat", "proc", activeProc)
+					if !*onlyIsolated {
+						// deliberately ignoring the returned values
+						_, _, _, err := proc.ReadPidProcStat(activeProc.Pid)
+						if err != nil {
+							log.Error("cannot read /proc/<pid>/stat", "proc", activeProc)
+						} else {
+							procsRead += 1
+						}
 					}
 				}
 			}
-			// if an  isolated cpu didnt had a context switch, the same process continues
-			if *onlyIsolated {
-				for _, isolatedCPU := range isolatedCPUs {
-					procsRead += len(isolated.ActiveProcs(isolatedCPU))
+			for _, isolatedCPU := range isolatedCPUs {
+				procs := isolated.ActiveProcs(isolatedCPU)
+				log.Info("Isolated Active", "cpu", isolatedCPU, "num", len(procs))
+				for _, p := range procs {
+					// deliberately ignoring the returned values
+					_, _, _, err := proc.ReadPidProcStat(p.Pid)
+					if err != nil {
+						log.Error("cannot read /proc/<pid>/stat", "proc", p)
+						isolated.RemoveTracking(p.Pid)
+					} else {
+						procsRead += 1
+					}
+					procsRead += len(procs)
 				}
 			}
 			log.Info("ActiveProcs", "num", procsRead, "cost", time.Since(newTs).String())
