@@ -9,13 +9,16 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
+	. "github.com/vimalk78/ebpf-proc-hybrid/internal/types"
 )
 
-type ActiveProcs []struct {
-	Pid  uint32
-	Cpu  int32
+type ActiveProc struct {
+	Pid  Pid
+	Cpu  CPUId
 	Comm string
 }
+
+type ActiveProcs []ActiveProc
 
 type bpfManager struct {
 	bpfObjs    keplerObjects

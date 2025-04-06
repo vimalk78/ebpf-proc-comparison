@@ -3,6 +3,7 @@ package proc
 import (
 	"errors"
 	"fmt"
+	. "github.com/vimalk78/ebpf-proc-hybrid/internal/types"
 	"os"
 	"strconv"
 	"strings"
@@ -30,7 +31,7 @@ const (
 )
 
 // Read /proc/<pid>/stat
-func ReadPidProcStat(pid uint32) (CpuTicks, CpuTicks, string, error) {
+func ReadPidProcStat(pid Pid) (CpuTicks, CpuTicks, string, error) {
 	statPath := fmt.Sprintf("/proc/%d/stat", pid)
 	statBytes, err := os.ReadFile(statPath)
 	if err != nil {
@@ -40,7 +41,7 @@ func ReadPidProcStat(pid uint32) (CpuTicks, CpuTicks, string, error) {
 }
 
 // Parse the stat file content
-func readPidProcStatFromStr(pid uint32, stats string) (CpuTicks, CpuTicks, string, error) {
+func readPidProcStatFromStr(pid Pid, stats string) (CpuTicks, CpuTicks, string, error) {
 	// Handle processes with parentheses in names
 	// Format: pid (comm) state ppid ...
 	commStart := strings.IndexByte(stats, '(')
@@ -116,17 +117,17 @@ func readCpuProcStatFromStr(numCpu int, kind CpuTicksKind, data string) ([]CpuTi
 	return cpuTicks, nil
 }
 
-func GetProcPids() ([]uint32, error) {
+func GetProcPids() ([]Pid, error) {
 	return getProcPidsFromDir("/proc")
 }
 
-func getProcPidsFromDir(dir string) ([]uint32, error) {
+func getProcPidsFromDir(dir string) ([]Pid, error) {
 	de, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read /proc dir %v", err)
 	}
 	count := 0
-	pids := make([]uint32, len(de))
+	pids := make([]Pid, len(de))
 	for _, d := range de {
 		if pid, err := strconv.ParseUint(d.Name(), 10, 32); err != nil {
 			// could be some file/directory which is not a pid. like /proc/cpuinfo
@@ -136,7 +137,7 @@ func getProcPidsFromDir(dir string) ([]uint32, error) {
 				return nil, err
 			}
 		} else {
-			pids[count] = uint32(pid)
+			pids[count] = Pid(pid)
 			count += 1
 		}
 
@@ -144,7 +145,7 @@ func getProcPidsFromDir(dir string) ([]uint32, error) {
 	return pids[:count], nil
 }
 
-func MustGetIsolatedCPUs() []int {
+func MustGetIsolatedCPUs() []CPUId {
 	cpus, err := GetIsolatedCPUs()
 	if err != nil {
 		panic("cannot get isolated cpus " + err.Error())
@@ -152,7 +153,7 @@ func MustGetIsolatedCPUs() []int {
 	return cpus
 }
 
-func GetIsolatedCPUs() ([]int, error) {
+func GetIsolatedCPUs() ([]CPUId, error) {
 	data, err := os.ReadFile("/sys/devices/system/cpu/isolated")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read isolated CPUs: %v", err)
@@ -161,13 +162,13 @@ func GetIsolatedCPUs() ([]int, error) {
 	return getIsolatedCPUsFromStr(cpuStr)
 }
 
-func getIsolatedCPUsFromStr(cpuStr string) ([]int, error) {
+func getIsolatedCPUsFromStr(cpuStr string) ([]CPUId, error) {
 	if cpuStr == "" {
-		return []int{}, nil // No isolated CPUs
+		return []CPUId{}, nil // No isolated CPUs
 	}
 
 	parts := strings.Split(cpuStr, ",")
-	var cpus []int
+	var cpus []CPUId
 	for _, part := range parts {
 		cpuRange := strings.SplitN(part, "-", 2)
 		if len(cpuRange) == 0 {
@@ -186,7 +187,7 @@ func getIsolatedCPUsFromStr(cpuStr string) ([]int, error) {
 			}
 			cpu := cpuBegin
 			for cpu <= cpuEnd {
-				cpus = append(cpus, cpu)
+				cpus = append(cpus, CPUId(cpu))
 				cpu++
 			}
 		} else if len(cpuRange) == 1 {
@@ -194,7 +195,7 @@ func getIsolatedCPUsFromStr(cpuStr string) ([]int, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid cpu %s", part)
 			}
-			cpus = append(cpus, cpu)
+			cpus = append(cpus, CPUId(cpu))
 		}
 	}
 	return cpus, nil
