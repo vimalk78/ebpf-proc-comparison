@@ -14,6 +14,7 @@ import (
 
 	"github.com/alecthomas/kingpin"
 	"github.com/vimalk78/ebpf-proc-hybrid/internal/ebpf"
+	"github.com/vimalk78/ebpf-proc-hybrid/internal/isolated"
 	"github.com/vimalk78/ebpf-proc-hybrid/internal/proc"
 )
 
@@ -56,6 +57,7 @@ func main() {
 func run(ctx context.Context, doneCh chan struct{}) {
 	log.Info("Starting loop", "interval", loopInterval)
 	log.Info("Isolated CPUs", "num", len(isolatedCPUs), "cpus", isolatedCPUs)
+	isolated.Init(isolatedCPUs)
 	ticker := time.Tick(*loopInterval)
 	oldTs := time.Now()
 
@@ -66,22 +68,38 @@ func run(ctx context.Context, doneCh chan struct{}) {
 			if timeDiffSec < 0.1 {
 				continue
 			}
-			// get active procs
+			procsRead := 0
+			// get active procs from ebpf
 			activeProcs, err := bpfInstance.GetActiveProcs()
 			if err != nil {
 				log.Error("Error reading active procs", "error", err)
 			}
-			procsRead := 0
 			// read /proc/<pid>/stat for each active proc
 			for _, activeProc := range activeProcs {
-				if *onlyIsolated && !slices.Contains(isolatedCPUs, int(activeProc.Cpu)) {
-					continue
+				if slices.Contains(isolatedCPUs, activeProc.Cpu) {
+					isolated.StartTracking(activeProc.Cpu, activeProc)
+				} else {
+					if !*onlyIsolated {
+						// deliberately ignoring the returned values
+						_, _, _, err := proc.ReadPidProcStat(activeProc.Pid)
+						if err != nil {
+							log.Error("cannot read /proc/<pid>/stat", "proc", activeProc)
+						} else {
+							procsRead += 1
+						}
+					}
 				}
-				procsRead += 1
+			}
+			// get active procs from isolated cpus
+			isolatedActiveProcs := isolated.ActiveProcs()
+			for _, isolatedActiveProc := range isolatedActiveProcs {
 				// deliberately ignoring the returned values
-				_, _, _, err := proc.ReadPidProcStat(activeProc.Pid)
+				_, _, _, err := proc.ReadPidProcStat(isolatedActiveProc.Pid)
 				if err != nil {
-					log.Error("cannot read /proc/<pid>/stat", "proc", activeProc)
+					log.Error("cannot read /proc/<pid>/stat", "proc", isolatedActiveProc)
+					isolated.RemoveTracking(isolatedActiveProc.Pid)
+				} else {
+					procsRead += 1
 				}
 			}
 			log.Info("ActiveProcs", "num", procsRead, "cost", time.Since(newTs).String())
