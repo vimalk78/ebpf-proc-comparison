@@ -35,20 +35,18 @@ func Track(cpu CPUId, proc ebpf.ActiveProc) {
 }
 
 func ActiveProcs(cpu CPUId) []ebpf.ActiveProc {
-	t, ok := tracker[cpu]
-	if ok {
-		if t.currentProcs != nil && len(t.currentProcs) != 0 {
-			// some activity happened on isolated cpu
-			activeProcs := t.currentProcs
-			// current becomes previous
-			t.currentProcs, t.previousProcs = nil, t.currentProcs
-			return slices.Collect(maps.Values(activeProcs))
-		} else {
-			// no activity happened on isolated cpu
-			activeProcs := t.previousProcs
-			// previous remains previous
-			return slices.Collect(maps.Values(activeProcs))
-		}
+	t, _ := tracker[cpu]
+	if len(t.currentProcs) != 0 {
+		// some activity happened on isolated cpu
+		activeProcs := t.currentProcs
+		// current becomes previous
+		t.previousProcs = t.currentProcs
+		t.currentProcs = map[Pid]ebpf.ActiveProc{}
+		return slices.Collect(maps.Values(activeProcs))
+	} else {
+		// no activity happened on isolated cpu
+		activeProcs := t.previousProcs
+		// previous remains previous
+		return slices.Collect(maps.Values(activeProcs))
 	}
-	return []ebpf.ActiveProc{}
 }
