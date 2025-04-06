@@ -1,7 +1,6 @@
 package isolated
 
 import (
-	"fmt"
 	"maps"
 	"slices"
 
@@ -31,13 +30,13 @@ func Init(isolated []CPUId) {
 	}
 }
 
-func Track(cpu CPUId, proc ebpf.ActiveProc) {
-	t, _ := procs[cpu]
+func StartTrack(cpu CPUId, proc ebpf.ActiveProc) {
+	t := procs[cpu]
 	t.currentProcs[proc.Pid] = proc
 	cpus[proc.Pid] = cpu
 }
 
-func RemoveTracking(pid Pid) {
+func RemoveTrack(pid Pid) {
 	cpu := cpus[pid]
 	delete(cpus, pid)
 	pt := procs[cpu]
@@ -45,20 +44,18 @@ func RemoveTracking(pid Pid) {
 }
 
 func ActiveProcs(cpu CPUId) []ebpf.ActiveProc {
-	t, _ := procs[cpu]
+	t := procs[cpu]
 	if len(t.currentProcs) != 0 {
 		// some activity happened on isolated cpu
 		activeProcs := t.currentProcs
 		// current becomes previous
 		t.previousProcs = t.currentProcs
 		t.currentProcs = map[Pid]ebpf.ActiveProc{}
-		fmt.Printf("isolated current ")
 		return slices.Collect(maps.Values(activeProcs))
 	} else {
 		// no activity happened on isolated cpu
 		activeProcs := t.previousProcs
 		// previous remains previous
-		fmt.Printf("isolated previous ")
 		return slices.Collect(maps.Values(activeProcs))
 	}
 }
