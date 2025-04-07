@@ -68,12 +68,12 @@ func run(ctx context.Context, doneCh chan struct{}) {
 			if timeDiffSec < 0.1 {
 				continue
 			}
-			// get active procs
+			procsRead := 0
+			// get active procs from ebpf
 			activeProcs, err := bpfInstance.GetActiveProcs()
 			if err != nil {
 				log.Error("Error reading active procs", "error", err)
 			}
-			procsRead := 0
 			// read /proc/<pid>/stat for each active proc
 			for _, activeProc := range activeProcs {
 				if slices.Contains(isolatedCPUs, activeProc.Cpu) {
@@ -90,17 +90,16 @@ func run(ctx context.Context, doneCh chan struct{}) {
 					}
 				}
 			}
-			for _, isolatedCPU := range isolatedCPUs {
-				procs := isolated.ActiveProcs(isolatedCPU)
-				for _, p := range procs {
-					// deliberately ignoring the returned values
-					_, _, _, err := proc.ReadPidProcStat(p.Pid)
-					if err != nil {
-						log.Error("cannot read /proc/<pid>/stat", "proc", p)
-						isolated.RemoveTracking(p.Pid)
-					} else {
-						procsRead += 1
-					}
+			// get active procs from isolated cpus
+			isolatedActiveProcs := isolated.ActiveProcs()
+			for _, isolatedActiveProc := range isolatedActiveProcs {
+				// deliberately ignoring the returned values
+				_, _, _, err := proc.ReadPidProcStat(isolatedActiveProc.Pid)
+				if err != nil {
+					log.Error("cannot read /proc/<pid>/stat", "proc", isolatedActiveProc)
+					isolated.RemoveTracking(isolatedActiveProc.Pid)
+				} else {
+					procsRead += 1
 				}
 			}
 			log.Info("ActiveProcs", "num", procsRead, "cost", time.Since(newTs).String())

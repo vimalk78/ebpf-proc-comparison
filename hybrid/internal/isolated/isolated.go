@@ -44,7 +44,15 @@ func RemoveTracking(pid Pid) {
 	delete(pt.previousProcs, pid)
 }
 
-func ActiveProcs(cpu CPUId) []ebpf.ActiveProc {
+func ActiveProcs() []ebpf.ActiveProc {
+	activeProcs := []ebpf.ActiveProc{}
+	for cpu := range maps.Keys(procs) {
+		activeProcs = append(activeProcs, ActiveProcsForIsolatedCpu(cpu)...)
+	}
+	return activeProcs
+}
+
+func ActiveProcsForIsolatedCpu(cpu CPUId) []ebpf.ActiveProc {
 	t := procs[cpu]
 	if len(t.currentProcs) != 0 {
 		// some activity happened on isolated cpu
