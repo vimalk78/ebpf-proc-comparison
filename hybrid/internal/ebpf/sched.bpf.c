@@ -39,9 +39,9 @@ static inline void do_update(__u32 pid, __u32 tgid)
     info.pid = tgid;
     info.cpu = bpf_get_smp_processor_id();
     bpf_get_current_comm(&info.comm, sizeof(info.comm));
-    //if (__builtin_memcmp(&info.comm, "swapper/", 8) == 0){
-    //  return;
-    //}
+    if (__builtin_memcmp(&info.comm, "swapper/", 8) == 0){
+	return;
+    }
     if (__builtin_memcmp(&info.comm, "kworker", 7) == 0){
 	return;
     }

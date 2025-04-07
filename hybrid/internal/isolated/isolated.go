@@ -30,17 +30,18 @@ func Init(isolated []CPUId) {
 	}
 }
 
-func StartTrack(cpu CPUId, proc ebpf.ActiveProc) {
+func StartTracking(cpu CPUId, proc ebpf.ActiveProc) {
 	t := procs[cpu]
 	t.currentProcs[proc.Pid] = proc
 	cpus[proc.Pid] = cpu
 }
 
-func RemoveTrack(pid Pid) {
+func RemoveTracking(pid Pid) {
 	cpu := cpus[pid]
 	delete(cpus, pid)
 	pt := procs[cpu]
 	delete(pt.currentProcs, pid)
+	delete(pt.previousProcs, pid)
 }
 
 func ActiveProcs(cpu CPUId) []ebpf.ActiveProc {

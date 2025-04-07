@@ -77,7 +77,7 @@ func run(ctx context.Context, doneCh chan struct{}) {
 			// read /proc/<pid>/stat for each active proc
 			for _, activeProc := range activeProcs {
 				if slices.Contains(isolatedCPUs, activeProc.Cpu) {
-					isolated.StartTrack(activeProc.Cpu, activeProc)
+					isolated.StartTracking(activeProc.Cpu, activeProc)
 				} else {
 					if !*onlyIsolated {
 						// deliberately ignoring the returned values
@@ -97,7 +97,7 @@ func run(ctx context.Context, doneCh chan struct{}) {
 					_, _, _, err := proc.ReadPidProcStat(p.Pid)
 					if err != nil {
 						log.Error("cannot read /proc/<pid>/stat", "proc", p)
-						isolated.RemoveTrack(p.Pid)
+						isolated.RemoveTracking(p.Pid)
 					} else {
 						procsRead += 1
 					}
