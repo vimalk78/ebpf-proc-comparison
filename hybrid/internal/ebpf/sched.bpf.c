@@ -28,7 +28,7 @@ struct {
 
 static inline void do_update(__u32 pid, __u32 tgid)
 {
-    // Skip kernel threads (pid == 0)
+    // Skip kernel threads (pid == 0), swapper gets filtered out here
     if (pid == 0)
         return;
     
@@ -39,12 +39,6 @@ static inline void do_update(__u32 pid, __u32 tgid)
     info.pid = tgid;
     info.cpu = bpf_get_smp_processor_id();
     bpf_get_current_comm(&info.comm, sizeof(info.comm));
-    if (__builtin_memcmp(&info.comm, "swapper/", 8) == 0){
-	return;
-    }
-    if (__builtin_memcmp(&info.comm, "kworker", 7) == 0){
-	return;
-    }
     
     // Update active PIDs map
     bpf_map_update_elem(&active_procs, &tgid, &info, BPF_NOEXIST);
@@ -60,12 +54,7 @@ int handle_sched_switch(__u64 *ctx)
     __u32 prev_tgid = prev_task->tgid;
     do_update(prev_pid, prev_tgid);
 
-    struct task_struct *next_task;
-    next_task = (struct task_struct *)ctx[2];
-    __u32 next_pid = next_task->pid;
-    __u32 next_tgid = next_task->tgid;
-    do_update(next_pid, next_tgid);
-
+    // skip next task as bpf_get_current_comm will return prev_task comm 
     return 0;
 }
 
