@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,12 +17,21 @@ import (
 	"github.com/tklauser/go-sysconf"
 )
 
+// Must match the C struct process_info from the BPF program
+//
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -g -Wall -Werror" cpuTime ./cpu_time.bpf.c
+// type cpuTimeProcessInfo struct {
+// 	CpuTime uint64
+// 	Comm    [16]byte
+// }
 
+// ProcessData holds information about a process
 type ProcessData struct {
-	PID      uint32
-	CPUTime  uint64
-	LastTime uint64
+	PID        uint32
+	CPUTime    uint64
+	LastTime   uint64
+	Comm       string
+	Executable string
 }
 
 func main() {
@@ -88,14 +98,22 @@ func main() {
 
 		// Collect current CPU times
 		var key uint32
-		var value uint64
+		var value cpuTimeProcessInfo
 		currentData := make(map[uint32]ProcessData)
 
-		cpuIter := objs.CpuTimeMap.Iterate()
+		cpuIter := objs.ProcessMap.Iterate()
 		for cpuIter.Next(&key, &value) {
+			// Get executable path from /proc
+			executable := getExecutablePath(key)
+
+			// Convert command name from [16]byte to string, trimming NUL bytes
+			comm := trimNullBytes(value.Comm[:])
+
 			currentData[key] = ProcessData{
-				PID:     key,
-				CPUTime: value,
+				PID:        key,
+				CPUTime:    value.CpuTime,
+				Comm:       comm,
+				Executable: executable,
 			}
 		}
 		if err := cpuIter.Err(); err != nil {
@@ -104,9 +122,11 @@ func main() {
 
 		// Calculate deltas and update stored data
 		type ProcessUsage struct {
-			PID       uint32
-			CPUDelta  float64 // Delta in seconds
-			TotalTime float64 // Total time in seconds
+			PID        uint32
+			CPUDelta   float64 // Delta in seconds
+			TotalTime  float64 // Total time in seconds
+			Comm       string
+			Executable string
 		}
 
 		var usageData []ProcessUsage
@@ -114,8 +134,10 @@ func main() {
 
 		for pid, current := range currentData {
 			usage := ProcessUsage{
-				PID:       pid,
-				TotalTime: float64(current.CPUTime) / float64(clkTck),
+				PID:        pid,
+				TotalTime:  float64(current.CPUTime) / float64(clkTck),
+				Comm:       current.Comm,
+				Executable: current.Executable,
 			}
 
 			// Calculate delta if we have previous data
@@ -128,15 +150,17 @@ func main() {
 
 			// Update stored data
 			processData[pid] = ProcessData{
-				PID:      pid,
-				CPUTime:  current.CPUTime,
-				LastTime: current.CPUTime,
+				PID:        pid,
+				CPUTime:    current.CPUTime,
+				LastTime:   current.CPUTime,
+				Comm:       current.Comm,
+				Executable: current.Executable,
 			}
 		}
 
 		// Clear the map for next iteration
-		if err := objs.CpuTimeMap.Delete(nil); err != nil {
-			log.Printf("Warning: failed to clear CPU time map: %v", err)
+		if err := objs.ProcessMap.Delete(nil); err != nil {
+			log.Printf("Warning: failed to clear process map: %v", err)
 		}
 
 		// Sort by CPU delta (descending)
@@ -146,8 +170,8 @@ func main() {
 
 		// Print the results
 		fmt.Printf("\nCPU Usage (at %s):\n", startedAt.Format("15:04:05"))
-		fmt.Println("-------------------------------")
-		fmt.Printf("%-10s %-15s %-15s\n", "PID", "CPU (last int)", "Total CPU Time")
+		fmt.Println("-----------------------------------------------------------------------------------------------")
+		fmt.Printf("%-7s %-15s %-15s %-20s %-30s\n", "PID", "CPU (last int)", "Total CPU Time", "Command", "Executable")
 
 		limit := len(usageData)
 		if *count > 0 && *count < limit {
@@ -158,15 +182,17 @@ func main() {
 			process := usageData[i]
 			// Only show processes with non-zero CPU usage in this interval
 			if process.CPUDelta > 0 {
-				fmt.Printf("%-10d %-15.2fs %-15.2fs\n",
+				fmt.Printf("%-7d %-15.2fs %-15.2fs %-20s %-30s\n",
 					process.PID,
 					process.CPUDelta,
-					process.TotalTime)
+					process.TotalTime,
+					truncateString(process.Comm, 20),
+					truncateString(process.Executable, 30))
 			}
 		}
 
 		duration := time.Since(startedAt)
-		fmt.Printf("--------------------- %v ----------------------------------------------", duration)
+		fmt.Printf("-------------------------------------------------------------------- %v ----------------------\n", duration)
 
 		return nil
 	}
@@ -188,4 +214,37 @@ func main() {
 			return
 		}
 	}
+}
+
+// getExecutablePath returns the path to the executable of a process
+func getExecutablePath(pid uint32) string {
+	path := fmt.Sprintf("/proc/%d/exe", pid)
+	exe, err := os.Readlink(path)
+	if err != nil {
+		// Return empty string if we can't read the executable path
+		// This could happen for system processes or if we don't have permissions
+		return ""
+	}
+	return exe
+}
+
+// truncateString truncates a string to the given length and adds "..." if it was truncated
+func truncateString(s string, length int) string {
+	if len(s) <= length {
+		return s
+	}
+	return s[:length-3] + "..."
+}
+
+// trimNullBytes removes null bytes from the end of a byte slice and returns as string
+func trimNullBytes(b []int8) string {
+	sb := strings.Builder{}
+
+	for _, c := range b {
+		if c == 0 {
+			break
+		}
+		sb.WriteByte(byte(c))
+	}
+	return sb.String()
 }
