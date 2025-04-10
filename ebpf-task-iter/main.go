@@ -81,7 +81,7 @@ func parseFlags() Config {
 	interval := flag.Duration("interval", 1*time.Second, "Reporting interval (e.g. 1s, 500ms)")
 	count := flag.Int("count", 0, "Number of top processes to show (0 for all)")
 	flag.Parse()
-	
+
 	return Config{
 		interval: *interval,
 		count:    *count,
@@ -212,7 +212,7 @@ func collectCurrentData(it *link.Iter, objs *cpuTimeObjects) (map[uint32]Process
 			Executable: executable,
 		}
 	}
-	
+
 	if err := cpuIter.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating map: %v", err)
 	}
@@ -265,7 +265,7 @@ func updateStoredData(processData map[uint32]ProcessData, currentData map[uint32
 // printResults displays the CPU usage results
 func printResults(usageData []ProcessUsage, count int) {
 	startedAt := time.Now()
-	
+
 	fmt.Printf("\nCPU Usage (at %s):\n", startedAt.Format("15:04:05"))
 	fmt.Println("-----------------------------------------------------------------------------------------------")
 	fmt.Printf("%-7s %-15s %-15s %-20s %-30s\n", "PID", "CPU (last int)", "Total CPU Time", "Command", "Executable")
