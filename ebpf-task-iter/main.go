@@ -20,10 +20,6 @@ import (
 // Must match the C struct process_info from the BPF program
 //
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -g -Wall -Werror" cpuTime ./cpu_time.bpf.c
-// type cpuTimeProcessInfo struct {
-// 	CpuTime uint64
-// 	Comm    [16]byte
-// }
 
 // ProcessData holds information about a process
 type ProcessData struct {
@@ -154,9 +150,15 @@ func monitor(objs *cpuTimeObjects, it *link.Iter, cfg Config) {
 
 // collectAndPrintCPUData collects and displays CPU usage data
 func collectAndPrintCPUData(objs *cpuTimeObjects, it *link.Iter, processData map[uint32]ProcessData, cfg Config) error {
-	currentData, err := collectCurrentData(it, objs)
+	startedAt := time.Now()
+	currentData, keys, err := collectCurrentData(it, objs)
 	if err != nil {
 		return err
+	}
+
+	// Delete all keys in a batch
+	if _, err := objs.ProcessMap.BatchDelete(keys, nil); err != nil {
+		return fmt.Errorf("failed to batch delete keys: %v", err)
 	}
 
 	// Calculate usage data with deltas
@@ -165,23 +167,18 @@ func collectAndPrintCPUData(objs *cpuTimeObjects, it *link.Iter, processData map
 	// Update stored data for next iteration
 	updateStoredData(processData, currentData)
 
-	// Clear the map for next iteration
-	if err := objs.ProcessMap.Delete(nil); err != nil {
-		log.Printf("Warning: failed to clear process map: %v", err)
-	}
-
 	// Sort and print results
-	printResults(usageData, cfg.count)
+	printResults(usageData, cfg.count, startedAt)
 
 	return nil
 }
 
 // collectCurrentData runs the iterator and collects current process data
-func collectCurrentData(it *link.Iter, objs *cpuTimeObjects) (map[uint32]ProcessData, error) {
+func collectCurrentData(it *link.Iter, objs *cpuTimeObjects) (map[uint32]ProcessData, []uint32, error) {
 	// Open iterator to run the iterator
 	iter, err := it.Open()
 	if err != nil {
-		return nil, fmt.Errorf("failed to open iterator: %v", err)
+		return nil, nil, fmt.Errorf("failed to open iterator: %v", err)
 	}
 	defer iter.Close()
 
@@ -189,16 +186,19 @@ func collectCurrentData(it *link.Iter, objs *cpuTimeObjects) (map[uint32]Process
 	buf := make([]byte, 1)
 	_, err = iter.Read(buf)
 	if err != nil && !errors.Is(err, os.ErrClosed) && err.Error() != "EOF" {
-		return nil, fmt.Errorf("error reading from iterator: %v", err)
+		return nil, nil, fmt.Errorf("error reading from iterator: %v", err)
 	}
 
 	// Collect current CPU times
 	currentData := make(map[uint32]ProcessData)
 	var key uint32
 	var value cpuTimeProcessInfo
+	var keys []uint32
 
 	cpuIter := objs.ProcessMap.Iterate()
 	for cpuIter.Next(&key, &value) {
+		keys = append(keys, key)
+
 		// Get executable path from /proc
 		executable := getExecutablePath(key)
 
@@ -214,10 +214,10 @@ func collectCurrentData(it *link.Iter, objs *cpuTimeObjects) (map[uint32]Process
 	}
 
 	if err := cpuIter.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating map: %v", err)
+		return nil, nil, fmt.Errorf("error iterating map: %v", err)
 	}
 
-	return currentData, nil
+	return currentData, keys, nil
 }
 
 // calculateUsageData calculates CPU usage with deltas
@@ -263,33 +263,31 @@ func updateStoredData(processData map[uint32]ProcessData, currentData map[uint32
 }
 
 // printResults displays the CPU usage results
-func printResults(usageData []ProcessUsage, count int) {
-	startedAt := time.Now()
+func printResults(usageData []ProcessUsage, count int, startedAt time.Time) {
+
+	limit := len(usageData)
+	if count > 0 {
+		limit = min(limit, count)
+	}
+
 
 	fmt.Printf("\nCPU Usage (at %s):\n", startedAt.Format("15:04:05"))
 	fmt.Println("-----------------------------------------------------------------------------------------------")
 	fmt.Printf("%-7s %-15s %-15s %-20s %-30s\n", "PID", "CPU (last int)", "Total CPU Time", "Command", "Executable")
-
-	limit := len(usageData)
-	if count > 0 && count < limit {
-		limit = count
-	}
-
-	for i := 0; i < limit; i++ {
-		process := usageData[i]
+	for _, process := range usageData[:limit] {
 		// Only show processes with non-zero CPU usage in this interval
-		if process.CPUDelta > 0 {
-			fmt.Printf("%-7d %-15.2fs %-15.2fs %-20s %-30s\n",
-				process.PID,
-				process.CPUDelta,
-				process.TotalTime,
-				truncateString(process.Comm, 20),
-				truncateString(process.Executable, 30))
-		}
+		// if process.CPUDelta > 0 {
+		fmt.Printf("%-7d %-15.2fs %-15.2fs %-20s %-30s\n",
+			process.PID,
+			process.CPUDelta,
+			process.TotalTime,
+			truncateString(process.Comm, 20),
+			truncateString(process.Executable, 30))
+		//}
 	}
 
 	duration := time.Since(startedAt)
-	fmt.Printf("-------------------------------------------------------------------- %v ----------------------\n", duration)
+	fmt.Printf("------------------------------ %d: %v ----------------------\n", len(usageData), duration)
 }
 
 // getExecutablePath returns the path to the executable of a process
