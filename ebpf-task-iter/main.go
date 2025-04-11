@@ -264,12 +264,10 @@ func updateStoredData(processData map[uint32]ProcessData, currentData map[uint32
 
 // printResults displays the CPU usage results
 func printResults(usageData []ProcessUsage, count int, startedAt time.Time) {
-
 	limit := len(usageData)
 	if count > 0 {
 		limit = min(limit, count)
 	}
-
 
 	fmt.Printf("\nCPU Usage (at %s):\n", startedAt.Format("15:04:05"))
 	fmt.Println("-----------------------------------------------------------------------------------------------")
@@ -287,7 +285,7 @@ func printResults(usageData []ProcessUsage, count int, startedAt time.Time) {
 	}
 
 	duration := time.Since(startedAt)
-	fmt.Printf("------------------------------ %d: %v ----------------------\n", len(usageData), duration)
+	fmt.Printf("----->>>------------------------- %d: %v ---------- <<< ------------\n", len(usageData), duration)
 }
 
 // getExecutablePath returns the path to the executable of a process
